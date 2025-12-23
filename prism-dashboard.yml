@@ -3,6 +3,9 @@ kiosk_mode:
   hide_sidebar: true
 title: Home
 views:
+  # ==============================================================================
+  # VIEW: ERDGESCHOSS
+  # ==============================================================================
   - title: Erdgeschoss
     path: erdgeschoss
     type: custom:grid-layout
@@ -19,18 +22,18 @@ views:
         app-header, app-toolbar { display: none !important; }
         ha-drawer { display: none !important; }
     layout:
-      grid-template-columns: 240px 1fr
+      grid-template-columns: 240px minmax(0, 1fr)
       grid-template-rows: auto
       grid-template-areas: |
         "sidebar main"
       mediaquery:
         '(max-width: 800px)':
-          grid-template-columns: 1fr
+          grid-template-columns: minmax(0, 1fr)
           grid-template-areas: |
             "sidebar"
             "main"
     cards:
-      # --- DEFINITION SIDEBAR ANCHOR ---
+      # --- SIDEBAR (DEFINITION MIT ANCHOR) ---
       - type: vertical-stack
         view_layout:
           grid_area: sidebar
@@ -102,14 +105,14 @@ views:
           - type: custom:mushroom-template-card
             entity: calendar.family_shared
             primary: >
-              {{ state_attr('calendar.family_shared', 'message') if
-              state_attr('calendar.family_shared', 'message') else 'Keine Termine' }}
+              {{ state_attr('calendar.termine', 'message') if
+              state_attr('calendar.termine', 'message') else 'Keine Termine' }}
             secondary: >
-              {% set start_time = state_attr('calendar.family_shared', 'start_time')
+              {% set start_time = state_attr('calendar.termine', 'start_time')
               %} {% if start_time %}
                 {{ as_timestamp(start_time) | timestamp_custom('%d.%m. %H:%M') }}
               {% else %}
-                 
+                  
               {% endif %}
             icon: mdi:calendar-check
             icon_color: grey
@@ -127,7 +130,7 @@ views:
                   content:
                     type: calendar
                     entities:
-                      - calendar.family_shared
+                      - calendar.termine
                     initial_view: list
                     card_mod:
                       style: |
@@ -253,14 +256,17 @@ views:
         card_mod:
           style: |
             :host {
-              position: sticky; top: 0; height: 100vh; overflow: hidden !important;
+              /* Sticky Sidebar: Bleibt am PC stehen, scrollt am Handy mit */
+              @media (min-width: 801px) {
+                position: sticky; top: 0; height: 100vh; overflow: hidden !important;
+              }
             }
-      
+       
       - type: vertical-stack
         view_layout:
           grid_area: main
         cards:
-          # --- DEFINITION CHIPS NAVI CONTAINER STYLE ---
+          # --- CHIPS NAVI (DEIN DESIGN) ---
           - type: custom:mushroom-chips-card
             alignment: center
             card_mod: &chips_container_style
@@ -273,8 +279,15 @@ views:
                   margin: 0px auto 0px auto !important;
                   padding: 4px 10px !important;
                   width: fit-content;
+                  /* MOBILE FIX: Damit es nicht breiter als der Bildschirm wird */
+                  max-width: 90vw;
+                  flex-wrap: wrap; 
                   backdrop-filter: blur(10px);
                   --chip-height: 32px;
+                }
+                /* Anpassung der Chips für kleinere Bildschirme */
+                .chip-container {
+                  justify-content: center;
                 }
             chips:
               - type: template
@@ -287,7 +300,7 @@ views:
                     ha-card {
                       background: none !important; border: none !important; box-shadow: none !important;
                       --primary-text-color: #2196f3;
-                      --chip-font-weight: 500; --chip-font-size: 13px; letter-spacing: 3px; margin: 0 15px !important;
+                      --chip-font-weight: 500; --chip-font-size: 13px; letter-spacing: 3px; margin: 0 8px !important;
                     }
               - type: template
                 content: OBERGESCHOSS
@@ -299,7 +312,7 @@ views:
                     ha-card {
                       background: none !important; border: none !important; box-shadow: none !important;
                       --primary-text-color: rgba(255, 255, 255, 0.5);
-                      --chip-font-weight: 300; --chip-font-size: 13px; letter-spacing: 3px; margin: 0 15px !important;
+                      --chip-font-weight: 300; --chip-font-size: 13px; letter-spacing: 3px; margin: 0 8px !important;
                     }
                     ha-card:hover { --primary-text-color: rgba(255, 255, 255, 0.9); }
               - type: template
@@ -320,9 +333,20 @@ views:
                   action: navigate
                   navigation_path: cameras
                 card_mod: *inactive_chip_style
-          - type: grid
-            columns: 4
-            square: false
+          
+          # --- RESPONSIVE GRID ERDGESCHOSS ---
+          # Hier ist die wichtige Anpassung für Mobilgeräte
+          - type: custom:layout-card
+            layout_type: custom:grid-layout
+            layout:
+              grid-template-columns: repeat(4, minmax(0, 1fr)) # PC: 4 Spalten
+              grid-gap: 8px
+              mediaquery:
+                '(max-width: 1200px)':
+                  grid-template-columns: repeat(2, minmax(0, 1fr)) # Laptop/Tablet -> 2 Spalten (angepasst von 3)
+                '(max-width: 800px)':
+                  # FIX: minmax(0, 1fr) statt 1fr
+                  grid-template-columns: minmax(0, 1fr) 
             cards:
               - type: vertical-stack
                 cards:
@@ -340,7 +364,7 @@ views:
                             justify-content: center !important;
                             padding-left: 0 !important; padding-right: 0 !important;
                           }
-
+    
                           .info { flex: none !important; margin-right: 0
                           !important; }
                         .: |
@@ -396,7 +420,7 @@ views:
                           margin-bottom: 8px; width: 95% !important; margin-left: auto !important; margin-right: auto !important; min-height: 60px !important;
                           display: flex; flex-direction: column; justify-content: center;
                         }
-
+    
                         {% if (is_state(config.entity, 'on') and not is_state(config.entity, 'unlocked')) or is_state(config.entity, 'locked') or is_state(config.entity, 'open') or is_state(config.entity, 'heat') or is_state(config.entity, 'auto') %}
                           ha-card {
                             background: rgba(20, 20, 20, 0.6) !important;
@@ -406,7 +430,7 @@ views:
                             transform: translateY(2px);
                           }
                         {% endif %}
-
+    
                         /* --- ICON GLOW LOGIK --- */
                         {% if config.entity.startswith('lock.') %}
                           {% if is_state(config.entity, 'locked') %}
@@ -439,7 +463,7 @@ views:
                             }
                           {% endif %}
                         {% endif %}
-
+    
                         ha-card:active { transform: scale(0.98); }
                   - type: custom:mushroom-entity-card
                     entity: select.camera_scene_mode
@@ -517,9 +541,9 @@ views:
                   - type: markdown
                     content: >
                       <span style="opacity: 0.8; color: #ccc;">🌡️ {{
-                      states('sensor.kitchen_temperature')
+                      states('sensor.fussboden_heizung_thermostat_kuche_temperatur')
                       }}°C</span> <span style="opacity: 0.8; color: #ccc;">💧 {{
-                      states('sensor.kitchen_humidity')
+                      states('sensor.fussboden_heizung_thermostat_kuche_luftfeuchtigkeit')
                       }}%</span>
                     card_mod: *temp_info_style
                   - type: custom:mushroom-entity-card
@@ -533,7 +557,7 @@ views:
                       action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
-                    entity: light.kitchen_led_strip
+                    entity: light.kitchen_strip
                     name: Wall
                     layout: horizontal
                     icon: mdi:led-strip-variant
@@ -678,14 +702,14 @@ views:
                                   action: call-service
                                   service: input_select.select_option
                                   target:
-                                    entity_id: input_select.robot_vacuum_status
+                                    entity_id: input_select.roboter_status
                                   data:
                                     option: Küche reinigen
                                 hold_action:
                                   action: call-service
                                   service: scene.turn_on
                                   target:
-                                    entity_id: scene.clean_kitchen
+                                    entity_id: scene.0324837f_ad5e_4347_af91_6adea636fcd2
                                 card_mod:
                                   style: >
                                     ha-card { background: none; box-shadow:
@@ -698,14 +722,14 @@ views:
                                   action: call-service
                                   service: input_select.select_option
                                   target:
-                                    entity_id: input_select.robot_vacuum_status
+                                    entity_id: input_select.roboter_status
                                   data:
                                     option: Alles reinigen
                                 hold_action:
                                   action: call-service
                                   service: scene.turn_on
                                   target:
-                                    entity_id: scene.clean_all
+                                    entity_id: scene.b284b271_06ec_4c7e_8332_ac1cbb7276fa
                                 card_mod:
                                   style: >
                                     ha-card { background: none; box-shadow:
@@ -718,7 +742,7 @@ views:
                                   action: call-service
                                   service: input_select.select_option
                                   target:
-                                    entity_id: input_select.robot_vacuum_status
+                                    entity_id: input_select.roboter_status
                                   data:
                                     option: Standby
                                 card_mod:
@@ -872,6 +896,9 @@ views:
                       action: more-info
                     card_mod: *mush_card_style
 
+  # ==============================================================================
+  # VIEW: OBERGESCHOSS
+  # ==============================================================================
   - title: Obergeschoss
     path: obergeschoss
     type: custom:grid-layout
@@ -888,13 +915,14 @@ views:
         app-header, app-toolbar { display: none !important; }
         ha-drawer { display: none !important; }
     layout:
-      grid-template-columns: 240px 1fr
+      grid-template-columns: 240px minmax(0, 1fr)
       grid-template-rows: auto
       grid-template-areas: |
         "sidebar main"
       mediaquery:
         '(max-width: 800px)':
-          grid-template-columns: 1fr
+          # FIX: minmax(0, 1fr)
+          grid-template-columns: minmax(0, 1fr)
           grid-template-areas: |
             "sidebar"
             "main"
@@ -941,9 +969,19 @@ views:
                   action: navigate
                   navigation_path: cameras
                 card_mod: *inactive_chip_style
-          - type: grid
-            columns: 3
-            square: false
+          
+          # --- RESPONSIVE GRID (OBERGESCHOSS) ---
+          - type: custom:layout-card
+            layout_type: custom:grid-layout
+            layout:
+              grid-template-columns: repeat(3, minmax(0, 1fr))
+              grid-gap: 8px
+              mediaquery:
+                '(max-width: 1200px)':
+                  grid-template-columns: repeat(2, minmax(0, 1fr))
+                '(max-width: 800px)':
+                  # FIX: minmax(0, 1fr) statt 1fr
+                  grid-template-columns: minmax(0, 1fr) 
             cards:
               # --- SPALTE 1: SCHLAFEN ---
               - type: vertical-stack
@@ -973,7 +1011,7 @@ views:
                     hold_action:
                       action: more-info
                     card_mod: *mush_card_style
-      
+       
               # --- SPALTE 2: BAD OG ---
               - type: vertical-stack
                 cards:
@@ -1024,7 +1062,7 @@ views:
                     hold_action:
                       action: more-info
                     card_mod: *mush_climate_style
-      
+       
               # --- SPALTE 3: SCHRANK ---
               - type: vertical-stack
                 cards:
@@ -1079,6 +1117,9 @@ views:
                       action: none
                     card_mod: *mush_card_style
 
+  # ==============================================================================
+  # VIEW: BÜRO
+  # ==============================================================================
   - title: Büro
     path: buro
     type: custom:grid-layout
@@ -1095,13 +1136,14 @@ views:
         app-header, app-toolbar { display: none !important; }
         ha-drawer { display: none !important; }
     layout:
-      grid-template-columns: 240px 1fr
+      grid-template-columns: 240px minmax(0, 1fr)
       grid-template-rows: auto
       grid-template-areas: |
         "sidebar main"
       mediaquery:
         '(max-width: 800px)':
-          grid-template-columns: 1fr
+          # FIX: minmax(0, 1fr)
+          grid-template-columns: minmax(0, 1fr)
           grid-template-areas: |
             "sidebar"
             "main"
@@ -1148,12 +1190,32 @@ views:
                   action: navigate
                   navigation_path: cameras
                 card_mod: *inactive_chip_style
-          - type: grid
-            columns: 3
-            square: false
+          
+          # --- RESPONSIVE GRID (BÜRO) ---
+          - type: custom:layout-card
+            layout_type: custom:grid-layout
+            layout:
+              grid-template-columns: repeat(3, minmax(0, 1fr))
+              grid-template-areas: |
+                "left right workshop"
+              grid-gap: 8px
+              mediaquery:
+                '(max-width: 1200px)':
+                  grid-template-columns: repeat(2, minmax(0, 1fr))
+                  grid-template-areas: |
+                    "left right"
+                    "workshop workshop"
+                '(max-width: 800px)':
+                  # FIX: Single column on mobile to match other pages
+                  grid-template-columns: repeat(2, minmax(0, 1fr))
+                  grid-template-areas: |
+                    "left right"
+                    "workshop workshop"
             cards:
               # SPALTE 1: BÜRO LINKS (Header + Temp + 4 Karten)
               - type: vertical-stack
+                view_layout:
+                  grid_area: left
                 cards:
                   - type: custom:mushroom-template-card
                     primary: BÜRO
@@ -1180,22 +1242,36 @@ views:
                     name: Deckenlicht
                     icon: mdi:ceiling-light
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: light.office_desk
                     name: Schreibtisch
                     icon: mdi:lamp
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: light.office_monitor
                     name: Monitor
                     icon: mdi:monitor
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
-
+    
               # SPALTE 2: BÜRO RECHTS
               - type: vertical-stack
+                view_layout:
+                  grid_area: right
                 cards:
                   # Gap Card 
                   - type: markdown
@@ -1219,22 +1295,36 @@ views:
                     name: BangerTech
                     icon: mdi:led-strip-variant
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: light.office_accent_light
                     name: Moosbild
                     icon: mdi:flower-tulip
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: light.office_wled
                     name: WLED
                     icon: mdi:led-strip
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
-
+    
               # SPALTE 3: WERKSTATT
               - type: vertical-stack
+                view_layout:
+                  grid_area: workshop
                 cards:
                   - type: custom:mushroom-template-card
                     primary: WERKSTATT
@@ -1256,8 +1346,15 @@ views:
                     name: Heatpress
                     icon: mdi:printer-3d
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
 
+  # ==============================================================================
+  # VIEW: TEICH
+  # ==============================================================================
   - title: Teich
     path: pond
     type: custom:grid-layout
@@ -1274,13 +1371,14 @@ views:
         app-header, app-toolbar { display: none !important; }
         ha-drawer { display: none !important; }
     layout:
-      grid-template-columns: 240px 1fr
+      grid-template-columns: 240px minmax(0, 1fr)
       grid-template-rows: auto
       grid-template-areas: |
         "sidebar main"
       mediaquery:
         '(max-width: 800px)':
-          grid-template-columns: 1fr
+          # FIX: minmax(0, 1fr)
+          grid-template-columns: minmax(0, 1fr)
           grid-template-areas: |
             "sidebar"
             "main"
@@ -1327,9 +1425,19 @@ views:
                   action: navigate
                   navigation_path: cameras
                 card_mod: *inactive_chip_style
-          - type: grid
-            columns: 3
-            square: false
+          
+          # --- RESPONSIVE GRID (TEICH) ---
+          - type: custom:layout-card
+            layout_type: custom:grid-layout
+            layout:
+              grid-template-columns: repeat(3, minmax(0, 1fr))
+              grid-gap: 8px
+              mediaquery:
+                '(max-width: 1200px)':
+                  grid-template-columns: repeat(2, minmax(0, 1fr))
+                '(max-width: 800px)':
+                  # FIX: minmax(0, 1fr)
+                  grid-template-columns: minmax(0, 1fr)
             cards:
               - type: vertical-stack
                 cards:
@@ -1349,18 +1457,30 @@ views:
                     name: Wasserfall
                     icon: mdi:waterfall
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: switch.pond_outlet_2
                     name: Outlet 2
                     icon: mdi:power-socket-eu
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: switch.pond_outlet_1
                     name: Outlet 1
                     icon: mdi:power-socket-eu
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
               - type: vertical-stack
                 cards:
@@ -1379,6 +1499,10 @@ views:
                     icon: mdi:waves-arrow-up
                     layout: horizontal
                     icon_color: blue
+                    tap_action:
+                      action: none
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: binary_sensor.pond_water_level_normal
@@ -1386,12 +1510,20 @@ views:
                     icon: mdi:waves
                     layout: horizontal
                     icon_color: blue
+                    tap_action:
+                      action: none
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: input_boolean.pond_water_change
                     name: Wasserwechsel
                     icon: mdi:sync
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
               - type: vertical-stack
                 cards:
@@ -1409,14 +1541,25 @@ views:
                     name: Teich Einlass
                     icon: mdi:pipe-valve
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
                   - type: custom:mushroom-entity-card
                     entity: switch.pond_pump
                     name: Ablauf Pumpe
                     icon: mdi:pump
                     layout: horizontal
+                    tap_action:
+                      action: toggle
+                    hold_action:
+                      action: more-info
                     card_mod: *mush_card_style
 
+  # ==============================================================================
+  # VIEW: CAMERAS
+  # ==============================================================================
   - title: Cameras
     path: cameras
     type: custom:grid-layout
@@ -1433,13 +1576,14 @@ views:
         app-header, app-toolbar { display: none !important; }
         ha-drawer { display: none !important; }
     layout:
-      grid-template-columns: 240px 1fr
+      grid-template-columns: 240px minmax(0, 1fr)
       grid-template-rows: auto
       grid-template-areas: |
         "sidebar main"
       mediaquery:
         '(max-width: 800px)':
-          grid-template-columns: 1fr
+          # FIX: minmax(0, 1fr)
+          grid-template-columns: minmax(0, 1fr)
           grid-template-areas: |
             "sidebar"
             "main"
@@ -1449,7 +1593,7 @@ views:
         view_layout:
           grid_area: sidebar
         cards: *sidebar_content
-
+ 
       # --- MAIN CONTENT ---
       - type: vertical-stack
         view_layout:
@@ -1490,11 +1634,17 @@ views:
                   action: navigate
                   navigation_path: cameras
                 card_mod: *active_chip_style
-
-          # --- KAMERA GRID (2 Spalten) ---
-          - type: grid
-            columns: 2
-            square: false
+ 
+          # --- RESPONSIVE GRID (CAMERAS) ---
+          - type: custom:layout-card
+            layout_type: custom:grid-layout
+            layout:
+              grid-template-columns: repeat(2, minmax(0, 1fr))
+              grid-gap: 8px
+              mediaquery:
+                '(max-width: 800px)':
+                  # FIX: minmax(0, 1fr)
+                  grid-template-columns: minmax(0, 1fr)
             cards:
               # KAMERA 1: DOORBELL
               - type: vertical-stack
@@ -1524,7 +1674,7 @@ views:
                         solid rgba(255,255,255,0.1) !important; box-shadow: 0
                         4px 20px rgba(0, 0, 0, 0.6) !important; background: none
                         !important; }
-
+ 
               # KAMERA 2: TERRASSE
               - type: vertical-stack
                 cards:
@@ -1553,7 +1703,7 @@ views:
                         solid rgba(255,255,255,0.1) !important; box-shadow: 0
                         4px 20px rgba(0, 0, 0, 0.6) !important; background: none
                         !important; }
-
+ 
               # KAMERA 3: EINFAHRT
               - type: vertical-stack
                 cards:
