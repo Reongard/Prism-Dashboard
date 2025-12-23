@@ -7,7 +7,7 @@ class PrismButtonCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { entity: "light.example_light", name: "Example", icon: "mdi:lightbulb", layout: "horizontal" }
+    return { entity: "light.example_light", name: "Example", icon: "mdi:lightbulb", layout: "horizontal", active_color: "#ffc864" }
   }
 
   static getConfigForm() {
@@ -33,6 +33,10 @@ class PrismButtonCard extends HTMLElement {
               options: ["horizontal", "vertical"]
             }
           }
+        },
+        {
+          name: "active_color",
+          selector: { color_rgb: {} }
         }
       ]
     };
@@ -49,7 +53,23 @@ class PrismButtonCard extends HTMLElement {
     if (!this._config.layout) {
       this._config.layout = "horizontal";
     }
+    // Normalize active_color (convert RGB arrays to hex if needed)
+    if (this._config.active_color) {
+      this._config.active_color = this._normalizeColor(this._config.active_color);
+    }
     this._updateCard();
+  }
+
+  _normalizeColor(color) {
+    // If color is an array [r, g, b] from color_rgb selector, convert to hex
+    if (Array.isArray(color) && color.length >= 3) {
+      const r = color[0].toString(16).padStart(2, '0');
+      const g = color[1].toString(16).padStart(2, '0');
+      const b = color[2].toString(16).padStart(2, '0');
+      return `#${r}${g}${b}`;
+    }
+    // If it's already a hex string, return as is
+    return color;
   }
 
   set hass(hass) {
@@ -90,7 +110,18 @@ class PrismButtonCard extends HTMLElement {
     if (!entity) return null;
     
     const state = entity.state;
+    const isActive = this._isActive();
     
+    // If active_color is configured and entity is active, use it
+    if (isActive && this._config.active_color) {
+      const hex = this._config.active_color;
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return { color: `rgb(${r}, ${g}, ${b})`, shadow: `rgba(${r}, ${g}, ${b}, 0.6)` };
+    }
+    
+    // Otherwise use default colors based on entity type
     if (this._config.entity.startsWith('lock.')) {
       if (state === 'locked') {
         return { color: 'rgb(76, 175, 80)', shadow: 'rgba(76, 175, 80, 0.6)' };

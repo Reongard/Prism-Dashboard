@@ -6,7 +6,7 @@ class PrismMediaCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { entity: "media_player.example" }
+    return { entity: "media_player.example", playing_color: "#60a5fa" }
   }
 
   static getConfigForm() {
@@ -16,6 +16,10 @@ class PrismMediaCard extends HTMLElement {
           name: "entity",
           required: true,
           selector: { entity: { domain: "media_player" } }
+        },
+        {
+          name: "playing_color",
+          selector: { color_rgb: {} }
         }
       ]
     };
@@ -26,7 +30,25 @@ class PrismMediaCard extends HTMLElement {
       throw new Error('Please define an entity');
     }
     this.config = config;
+    // Normalize playing_color (convert RGB arrays to hex if needed)
+    if (this.config.playing_color) {
+      this.config.playing_color = this._normalizeColor(this.config.playing_color);
+    } else {
+      this.config.playing_color = "#60a5fa";
+    }
     this.render();
+  }
+
+  _normalizeColor(color) {
+    // If color is an array [r, g, b] from color_rgb selector, convert to hex
+    if (Array.isArray(color) && color.length >= 3) {
+      const r = color[0].toString(16).padStart(2, '0');
+      const g = color[1].toString(16).padStart(2, '0');
+      const b = color[2].toString(16).padStart(2, '0');
+      return `#${r}${g}${b}`;
+    }
+    // If it's already a hex string, return as is
+    return color;
   }
 
   set hass(hass) {
@@ -144,6 +166,7 @@ class PrismMediaCard extends HTMLElement {
     const art = attr.entity_picture; // This usually returns e.g. /api/media_player_proxy/...
     const vol = (attr.volume_level || 0) * 100;
     const isPlaying = this._entity ? this._entity.state === 'playing' : false;
+    const playingColor = this.config.playing_color || "#60a5fa";
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -247,7 +270,7 @@ class PrismMediaCard extends HTMLElement {
         }
         
         .media-btn.play.playing {
-            background: rgba(20, 20, 20, 0.8); color: #60a5fa;
+            background: rgba(20, 20, 20, 0.8);
             box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8), inset -1px -1px 2px rgba(255,255,255,0.05);
             border-top: 1px solid rgba(0,0,0,0.4);
         }
@@ -277,7 +300,7 @@ class PrismMediaCard extends HTMLElement {
         <div class="controls">
              <div class="media-btn circle" data-action="prev"><ha-icon icon="mdi:skip-previous"></ha-icon></div>
              
-             <div class="media-btn play ${isPlaying ? 'playing' : ''}" data-action="play_pause">
+             <div class="media-btn play ${isPlaying ? 'playing' : ''}" data-action="play_pause" style="${isPlaying ? `color: ${playingColor};` : ''}">
                 <ha-icon icon="${isPlaying ? 'mdi:pause' : 'mdi:play'}"></ha-icon>
                 <span>${isPlaying ? 'Pause' : 'Play'}</span>
              </div>

@@ -31,7 +31,7 @@ class PrismHeatCard extends HTMLElement {
         },
         {
           name: "color",
-          selector: { text: {} }
+          selector: { color_rgb: {} }
         }
       ]
     };
@@ -42,10 +42,24 @@ class PrismHeatCard extends HTMLElement {
       throw new Error('Please define an entity');
     }
     this.config = config;
-    // Default color if not set
-    if (!this.config.color) {
+    // Normalize color (convert RGB arrays to hex if needed)
+    if (this.config.color) {
+      this.config.color = this._normalizeColor(this.config.color);
+    } else {
       this.config.color = "#fb923c";
     }
+  }
+
+  _normalizeColor(color) {
+    // If color is an array [r, g, b] from color_rgb selector, convert to hex
+    if (Array.isArray(color) && color.length >= 3) {
+      const r = color[0].toString(16).padStart(2, '0');
+      const g = color[1].toString(16).padStart(2, '0');
+      const b = color[2].toString(16).padStart(2, '0');
+      return `#${r}${g}${b}`;
+    }
+    // If it's already a hex string, return as is
+    return color;
   }
 
   set hass(hass) {
