@@ -9,7 +9,8 @@
 </p>
 
 <p align="center">
-  <img src="images/screenshots/dashboard-main.png" width="49%" />
+  <img src="![tac-dash-1](https://github.com/user-attachments/assets/586ae926-8aec-4769-ac40-461cfa2b4ae3)
+" width="49%" />
   <img src="images/screenshots/dashboard-mobile.png" width="49%" />
 </p>
 <p align="center">
