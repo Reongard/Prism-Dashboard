@@ -115,6 +115,21 @@ Eine vertikale Jalousien-Karte mit Inlet-Slider und kompaktem Design.
 
 ---
 
+### prism-vacuum
+
+Eine Staubsauger-Roboter-Karte mit Inlet-Styling, Animation und Saugleistungssteuerung.
+
+<img width="400" alt="prism-vacuum" src="images/prism-vacuum.png" />
+
+**Verwendung:**
+```yaml
+- type: custom:prism-vacuum
+  entity: vacuum.robot_vacuum
+  name: Staubsauger
+```
+
+---
+
 ## Layout Components
 
 ### navigation-bar
