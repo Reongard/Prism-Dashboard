@@ -9,13 +9,8 @@
 </p>
 
 <p align="center">
-  <img src="![tac-dash-1](https://github.com/user-attachments/assets/586ae926-8aec-4769-ac40-461cfa2b4ae3)
-" width="49%" />
-  <img src="images/screenshots/dashboard-mobile.png" width="49%" />
-</p>
-<p align="center">
-  <img src="images/screenshots/tablet-view.png" width="49%" />
-  <img src="images/screenshots/popup-view.png" width="49%" />
+![tac-dash-1](https://github.com/user-attachments/assets/6048858f-4ba0-40a8-95b8-7787cde1d8ab)
+
 </p>
 
 ---
