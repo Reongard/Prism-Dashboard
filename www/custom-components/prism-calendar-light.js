@@ -1,5 +1,5 @@
 
-class PrismCalendarCard extends HTMLElement {
+class PrismCalendarLightCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -207,16 +207,16 @@ class PrismCalendarCard extends HTMLElement {
           font-family: system-ui, -apple-system, sans-serif;
         }
         .card {
-          background: rgba(30, 32, 36, 0.6);
+          background: rgba(255, 255, 255, 0.7);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
           border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.05);
-          border-top: 1px solid rgba(255, 255, 255, 0.15);
-          border-bottom: 1px solid rgba(0, 0, 0, 0.4);
-          box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0,0,0,0.3);
+          border: 1px solid rgba(0,0,0,0.05);
+          border-top: 1px solid rgba(255, 255, 255, 0.8);
+          border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+          box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0,0,0,0.05);
           padding: 20px;
-          color: white;
+          color: #1a1a1a;
         }
         
         .header {
@@ -228,19 +228,19 @@ class PrismCalendarCard extends HTMLElement {
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
             flex-shrink: 0;
         }
-        .title { font-size: 18px; font-weight: 500; color: #e0e0e0; }
-        .subtitle { font-size: 12px; font-weight: 500; color: #999; text-transform: uppercase; margin-top: 2px; }
+        .title { font-size: 18px; font-weight: 500; color: #1a1a1a; }
+        .subtitle { font-size: 12px; font-weight: 500; color: #666; text-transform: uppercase; margin-top: 2px; }
         
         .event-list {
             display: flex; flex-direction: column; gap: 12px;
         }
         .event-item {
             display: flex; gap: 16px; align-items: center;
-            background: rgba(20, 20, 20, 0.4);
-            box-shadow: inset 2px 2px 5px rgba(0,0,0,0.5), inset -1px -1px 2px rgba(255,255,255,0.05);
+            background: rgba(255, 255, 255, 0.5);
+            box-shadow: inset 2px 2px 5px rgba(255,255,255,0.8), inset -1px -1px 2px rgba(0,0,0,0.1);
             border-radius: 12px;
             padding: 12px 16px;
-            border: 1px solid rgba(255,255,255,0.02);
+            border: 1px solid rgba(0,0,0,0.03);
         }
         .timeline {
             display: flex; flex-direction: column; align-items: center; justify-content: center; width: 42px; flex-shrink: 0;
@@ -249,7 +249,7 @@ class PrismCalendarCard extends HTMLElement {
         /* Visual alignment helper: The header icon is 42px wide. We want these dots centered relative to that column */
         
         .dot {
-            width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.2);
+            width: 8px; height: 8px; border-radius: 50%; background: rgba(0,0,0,0.2);
         }
         .dot.active {
             /* Color set inline */
@@ -258,8 +258,8 @@ class PrismCalendarCard extends HTMLElement {
         .event-info {
             flex: 1;
         }
-        .event-title { font-size: 15px; font-weight: 500; color: white; margin-bottom: 4px; }
-        .event-time { font-size: 12px; color: rgba(255,255,255,0.5); display: flex; align-items: center; gap: 6px; }
+        .event-title { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
+        .event-time { font-size: 12px; color: rgba(0,0,0,0.5); display: flex; align-items: center; gap: 6px; }
         
       </style>
       <div class="card">
@@ -300,12 +300,12 @@ class PrismCalendarCard extends HTMLElement {
   }
 }
 
-customElements.define('prism-calendar', PrismCalendarCard);
+customElements.define('prism-calendar-light', PrismCalendarLightCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "prism-calendar",
-  name: "Prism Calendar",
+  type: "prism-calendar-light",
+  name: "Prism Calendar Light",
   preview: true,
   description: "A custom calendar card with configurable events and colors"
 });

@@ -84,44 +84,120 @@ class PrismCalendarCard extends HTMLElement {
     if (!this.config || !this.config.entity) return;
     
     const attr = this._entity ? this._entity.attributes : {};
-    const nextEventTitle = attr.message || 'No upcoming events';
-    const nextEventStart = attr.start_time;
-    
-    // We can't fetch full list easily without API calls in pure JS card without complexity. 
-    // We will display the NEXT event prominently.
-    
-    let timeStr = '';
-    if (nextEventStart) {
-        const date = new Date(nextEventStart);
-        timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    
     const maxEvents = this.config.max_events || 3;
     const iconColor = this._normalizeColor(this.config.icon_color || "#f87171");
     const dotColor = this._normalizeColor(this.config.dot_color || "#f87171");
     
-    // Generate event items (for now we only have one real event, rest are placeholders)
+    // Get all events from calendar entity
+    let events = [];
+    if (attr.all_events && Array.isArray(attr.all_events)) {
+      // all_events is an array of event objects
+      events = attr.all_events
+        .map(event => ({
+          title: event.summary || event.message || 'Unbenannt',
+          start: event.start || event.start_time || event.dtstart,
+          end: event.end || event.end_time || event.dtend
+        }))
+        .filter(event => event.start) // Only events with a start time
+        .sort((a, b) => {
+          // Sort by start time (earliest first)
+          const dateA = new Date(a.start);
+          const dateB = new Date(b.start);
+          return dateA - dateB;
+        })
+        .slice(0, maxEvents); // Take only the first maxEvents
+    } else if (attr.message && attr.start_time) {
+      // Fallback: use the single next event if all_events is not available
+      events = [{
+        title: attr.message,
+        start: attr.start_time
+      }];
+    }
+    
+    // Generate event items
     let eventItems = '';
-    for (let i = 0; i < maxEvents; i++) {
-      const isActive = i === 0 && nextEventTitle !== 'No upcoming events';
-      const eventTitle = i === 0 ? nextEventTitle : 'Keine weiteren Termine';
-      const eventTime = i === 0 ? (timeStr || 'Ganztägig') : '-';
-      const opacity = i === 0 ? '1' : '0.6';
-      
-      eventItems += `
-        <div class="event-item" style="opacity: ${opacity};">
+    if (events.length === 0) {
+      // No events
+      eventItems = `
+        <div class="event-item" style="opacity: 0.6;">
           <div class="timeline">
-            <div class="dot ${isActive ? 'active' : ''}" style="${isActive ? `background: ${dotColor}; box-shadow: 0 0 8px ${dotColor}99;` : ''}"></div>
+            <div class="dot"></div>
           </div>
           <div class="event-info">
-            <div class="event-title">${eventTitle}</div>
+            <div class="event-title">Keine kommenden Termine</div>
             <div class="event-time">
               <ha-icon icon="mdi:clock-outline" style="--mdc-icon-size: 12px;"></ha-icon>
-              ${eventTime}
+              -
             </div>
           </div>
         </div>
       `;
+    } else {
+      events.forEach((event, i) => {
+        const isActive = i === 0;
+        let timeStr = 'Ganztägig';
+        
+        if (event.start) {
+          try {
+            const date = new Date(event.start);
+            if (!isNaN(date.getTime())) {
+              const now = new Date();
+              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              const eventDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+              
+              if (eventDate.getTime() === today.getTime()) {
+                // Today
+                timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              } else {
+                // Future date
+                const daysDiff = Math.floor((eventDate - today) / (1000 * 60 * 60 * 24));
+                if (daysDiff === 1) {
+                  timeStr = `Morgen, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                } else if (daysDiff > 1 && daysDiff <= 7) {
+                  timeStr = date.toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+                } else {
+                  timeStr = date.toLocaleDateString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                }
+              }
+            }
+          } catch (e) {
+            // If date parsing fails, keep default "Ganztägig"
+          }
+        }
+        
+        eventItems += `
+          <div class="event-item" style="opacity: ${isActive ? '1' : '0.8'};">
+            <div class="timeline">
+              <div class="dot ${isActive ? 'active' : ''}" style="${isActive ? `background: ${dotColor}; box-shadow: 0 0 8px ${dotColor}99;` : ''}"></div>
+            </div>
+            <div class="event-info">
+              <div class="event-title">${event.title}</div>
+              <div class="event-time">
+                <ha-icon icon="mdi:clock-outline" style="--mdc-icon-size: 12px;"></ha-icon>
+                ${timeStr}
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      // Fill remaining slots with placeholders if needed
+      for (let i = events.length; i < maxEvents; i++) {
+        eventItems += `
+          <div class="event-item" style="opacity: 0.4;">
+            <div class="timeline">
+              <div class="dot"></div>
+            </div>
+            <div class="event-info">
+              <div class="event-title">Keine weiteren Termine</div>
+              <div class="event-time">
+                <ha-icon icon="mdi:clock-outline" style="--mdc-icon-size: 12px;"></ha-icon>
+                -
+              </div>
+            </div>
+          </div>
+        `;
+      }
     }
 
     this.shadowRoot.innerHTML = `
