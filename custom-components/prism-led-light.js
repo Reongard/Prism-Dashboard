@@ -69,6 +69,7 @@ class PrismLedLightCard extends HTMLElement {
               }
           }
       }
+      }
       
       this.render();
     }

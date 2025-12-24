@@ -69,6 +69,7 @@ class PrismLedCard extends HTMLElement {
               }
           }
       }
+      }
       
       this.render();
     }
