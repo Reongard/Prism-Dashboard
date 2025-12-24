@@ -124,6 +124,7 @@ class PrismSidebarLightCard extends HTMLElement {
             this.startCameraRotation();
         } else {
             this.updateValues();
+            this.setupMiniGraph();
         }
     }
 
@@ -591,16 +592,7 @@ class PrismSidebarLightCard extends HTMLElement {
                 </div>
                 
                 <div class="graph-container">
-                    <svg width="100%" height="100%" viewBox="0 0 280 60" preserveAspectRatio="none">
-                        <defs>
-                            <linearGradient id="grad-sidebar-light" x1="0%" y1="0%" x2="0%" y2="100%">
-                                <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:0.4" />
-                                <stop offset="50%" style="stop-color:#3b82f6;stop-opacity:0.2" />
-                                <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:0" />
-                            </linearGradient>
-                        </defs>
-                        <path d="${graphPath}" fill="url(#grad-sidebar-light)" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
+                    <div id="mini-graph-wrapper" style="width: 100%; height: 100%;"></div>
                 </div>
 
                 <div class="forecast-grid">
@@ -670,6 +662,42 @@ class PrismSidebarLightCard extends HTMLElement {
 
         // Setup event listeners
         this.setupListeners();
+        
+        // Setup mini-graph-card after render
+        this.setupMiniGraph();
+    }
+    
+    setupMiniGraph() {
+        if (!this._hass || !this.weatherEntity) return;
+        
+        const wrapper = this.shadowRoot?.getElementById('mini-graph-wrapper');
+        if (!wrapper) return;
+        
+        // Create mini-graph-card element
+        const graphCard = document.createElement('hui-mini-graph-card');
+        graphCard.hass = this._hass;
+        graphCard.config = {
+            type: 'custom:mini-graph-card',
+            entities: [this.weatherEntity],
+            hours_to_show: 168,
+            points_per_hour: 1,
+            line_width: 2,
+            height: 64,
+            show: {
+                fill: true,
+                icon: false,
+                name: false,
+                state: false
+            },
+            color_thresholds: [
+                { value: 0, color: '#3b82f6' },
+                { value: 20, color: '#3b82f6' }
+            ]
+        };
+        
+        // Clear and append
+        wrapper.innerHTML = '';
+        wrapper.appendChild(graphCard);
     }
 
     setupListeners() {

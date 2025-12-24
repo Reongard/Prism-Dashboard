@@ -332,10 +332,16 @@ class Prism3DPrinterCard extends HTMLElement {
         .stat-label {
           display: flex;
           align-items: center;
+          justify-content: center;
           gap: 4px;
           color: rgba(255, 255, 255, 0.4);
           font-size: 0.625rem;
           text-transform: uppercase;
+        }
+        .stat-label ha-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         .stat-value {
           font-size: 0.875rem;
@@ -365,6 +371,11 @@ class Prism3DPrinterCard extends HTMLElement {
           border: none;
           outline: none;
           font-family: inherit;
+        }
+        .btn ha-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
         .btn-pause {
           background-color: rgba(255, 255, 255, 0.05);
