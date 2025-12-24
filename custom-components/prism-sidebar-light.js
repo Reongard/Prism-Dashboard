@@ -7,6 +7,8 @@ class PrismSidebarLightCard extends HTMLElement {
         this.hasRendered = false;
         this.currentCameraIndex = 0;
         this.cameraEntities = [];
+        this.temperatureHistory = [];
+        this.historyLoading = false;
     }
 
     static getStubConfig() {
@@ -15,6 +17,7 @@ class PrismSidebarLightCard extends HTMLElement {
             camera_entity_2: "",
             camera_entity_3: "",
             rotation_interval: 10,
+            temperature_entity: "sensor.outdoor_temperature",
             weather_entity: "weather.example",
             forecast_days: 3,
             grid_entity: "sensor.example",
@@ -29,44 +32,59 @@ class PrismSidebarLightCard extends HTMLElement {
             schema: [
                 {
                     name: "camera_entity",
+                    label: "Camera entity",
                     selector: { entity: { domain: "camera" } }
                 },
                 {
                     name: "camera_entity_2",
+                    label: "Camera entity 2",
                     selector: { entity: { domain: "camera" } }
                 },
                 {
                     name: "camera_entity_3",
+                    label: "Camera entity 3",
                     selector: { entity: { domain: "camera" } }
                 },
                 {
                     name: "rotation_interval",
+                    label: "Rotation interval",
                     selector: { number: { min: 3, max: 60, step: 1, unit_of_measurement: "Sekunden" } },
                     default: 10
                 },
                 {
+                    name: "temperature_entity",
+                    label: "Temperature entity",
+                    selector: { entity: { domain: "sensor" } }
+                },
+                {
                     name: "weather_entity",
+                    label: "Weather entity",
                     selector: { entity: { domain: "weather" } }
                 },
                 {
                     name: "forecast_days",
+                    label: "Forecast days",
                     selector: { number: { min: 1, max: 7, step: 1, unit_of_measurement: "Tage" } },
                     default: 3
                 },
                 {
                     name: "grid_entity",
+                    label: "Grid entity",
                     selector: { entity: {} }
                 },
                 {
                     name: "solar_entity",
+                    label: "Solar entity",
                     selector: { entity: {} }
                 },
                 {
                     name: "home_entity",
+                    label: "Home entity",
                     selector: { entity: {} }
                 },
                 {
                     name: "calendar_entity",
+                    label: "Calendar entity",
                     selector: { entity: { domain: "calendar" } }
                 }
             ]
@@ -76,6 +94,7 @@ class PrismSidebarLightCard extends HTMLElement {
     setConfig(config) {
         this.config = { ...config };
         // Default entities if not provided
+        this.temperatureEntity = this.config.temperature_entity || 'sensor.outdoor_temperature';
         this.weatherEntity = this.config.weather_entity || 'weather.example';
         this.gridEntity = this.config.grid_entity || 'sensor.example';
         this.solarEntity = this.config.solar_entity || 'sensor.example';
@@ -131,6 +150,7 @@ class PrismSidebarLightCard extends HTMLElement {
             this.hasRendered = true;
             this.startClock();
             this.startCameraRotation();
+            this.fetchTemperatureHistory();
         } else {
             this.updateValues();
         }
@@ -330,25 +350,12 @@ class PrismSidebarLightCard extends HTMLElement {
 
 
     render() {
-        // Get weather data for graph from forecast (24h hourly data)
-        let weatherData = [1.2, 1.5, 2.1, 2.8, 2.5, 1.9, 1.4, 1.0, 0.8]; // Default
-        if (this._hass && this.weatherEntity) {
-            const weatherState = this._hass.states[this.weatherEntity];
-            if (weatherState && weatherState.attributes.forecast) {
-                // Get hourly forecast for next 24 hours (or available data)
-                const forecast = weatherState.attributes.forecast;
-                // Filter hourly forecasts (those with datetime, not just date)
-                const hourlyForecast = forecast.filter(f => f.datetime && f.datetime.includes('T'));
-                if (hourlyForecast.length > 0) {
-                    // Take first 24 hours or available data
-                    weatherData = hourlyForecast.slice(0, 24).map(f => f.temperature || f.templow || 0);
-                } else {
-                    // Fallback: use daily forecast temperatures
-                    weatherData = forecast.slice(0, 9).map(f => f.temperature || f.templow || 0);
-                }
-            }
+        // Use temperature history data for graph
+        let graphData = [1.2, 1.5, 2.1, 2.8, 2.5, 1.9, 1.4, 1.0, 0.8]; // Default
+        if (this.temperatureHistory && this.temperatureHistory.length > 0) {
+            graphData = this.temperatureHistory;
         }
-        const graphPath = this.generateGraphPath(weatherData, 280, 60);
+        const graphPath = this.generateGraphPath(graphData, 280, 60);
 
         // Get entity states for preview/display
         const cameraEntity = this.getCurrentCameraEntity();
@@ -749,6 +756,62 @@ class PrismSidebarLightCard extends HTMLElement {
             detail: { entityId: entityId }
         });
         this.dispatchEvent(event);
+    }
+
+    // Fetch temperature history data from Home Assistant
+    async fetchTemperatureHistory() {
+        if (this.historyLoading || !this._hass || !this.temperatureEntity) return;
+        
+        this.historyLoading = true;
+        
+        try {
+            // Calculate timestamps (last 7 days = 168 hours)
+            const endTime = new Date();
+            const startTime = new Date(endTime.getTime() - (168 * 60 * 60 * 1000)); // 168 hours ago
+            
+            // Format timestamps for Home Assistant API
+            const startISO = startTime.toISOString();
+            const endISO = endTime.toISOString();
+            
+            // Call Home Assistant History API
+            const response = await this._hass.callWS({
+                type: 'history/history_during_period',
+                start_time: startISO,
+                end_time: endISO,
+                entity_ids: [this.temperatureEntity],
+                minimal_response: true,
+                no_attributes: true,
+                significant_changes_only: true
+            });
+            
+            if (response && response.length > 0 && response[0].length > 0) {
+                // Extract temperature values
+                const historyData = response[0];
+                // Sample data points (e.g., one per hour) to avoid too many points
+                const sampleRate = Math.max(1, Math.floor(historyData.length / 168));
+                const sampledData = historyData
+                    .filter((_, index) => index % sampleRate === 0)
+                    .map(entry => parseFloat(entry.s))
+                    .filter(val => !isNaN(val));
+                
+                if (sampledData.length > 0) {
+                    this.temperatureHistory = sampledData;
+                    // Re-render to update the graph
+                    this.render();
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching temperature history:', error);
+            // Fallback: use current temperature state if available
+            if (this._hass.states[this.temperatureEntity]) {
+                const currentTemp = parseFloat(this._hass.states[this.temperatureEntity].state);
+                if (!isNaN(currentTemp)) {
+                    this.temperatureHistory = [currentTemp, currentTemp, currentTemp, currentTemp, currentTemp];
+                }
+            }
+        } finally {
+            this.historyLoading = false;
+        }
     }
 
     // Helper to create smooth SVG path from data points (similar to mini-graph-card)

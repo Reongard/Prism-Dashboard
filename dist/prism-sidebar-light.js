@@ -7,6 +7,8 @@ class PrismSidebarLightCard extends HTMLElement {
         this.hasRendered = false;
         this.currentCameraIndex = 0;
         this.cameraEntities = [];
+        this.temperatureHistory = [];
+        this.historyLoading = false;
     }
 
     static getStubConfig() {
@@ -15,7 +17,9 @@ class PrismSidebarLightCard extends HTMLElement {
             camera_entity_2: "",
             camera_entity_3: "",
             rotation_interval: 10,
+            temperature_entity: "sensor.outdoor_temperature",
             weather_entity: "weather.example",
+            forecast_days: 3,
             grid_entity: "sensor.example",
             solar_entity: "sensor.example",
             home_entity: "sensor.example",
@@ -28,39 +32,59 @@ class PrismSidebarLightCard extends HTMLElement {
             schema: [
                 {
                     name: "camera_entity",
+                    label: "Camera entity",
                     selector: { entity: { domain: "camera" } }
                 },
                 {
                     name: "camera_entity_2",
+                    label: "Camera entity 2",
                     selector: { entity: { domain: "camera" } }
                 },
                 {
                     name: "camera_entity_3",
+                    label: "Camera entity 3",
                     selector: { entity: { domain: "camera" } }
                 },
                 {
                     name: "rotation_interval",
+                    label: "Rotation interval",
                     selector: { number: { min: 3, max: 60, step: 1, unit_of_measurement: "Sekunden" } },
                     default: 10
                 },
                 {
+                    name: "temperature_entity",
+                    label: "Temperature entity",
+                    selector: { entity: { domain: "sensor" } }
+                },
+                {
                     name: "weather_entity",
+                    label: "Weather entity",
                     selector: { entity: { domain: "weather" } }
                 },
                 {
+                    name: "forecast_days",
+                    label: "Forecast days",
+                    selector: { number: { min: 1, max: 7, step: 1, unit_of_measurement: "Tage" } },
+                    default: 3
+                },
+                {
                     name: "grid_entity",
+                    label: "Grid entity",
                     selector: { entity: {} }
                 },
                 {
                     name: "solar_entity",
+                    label: "Solar entity",
                     selector: { entity: {} }
                 },
                 {
                     name: "home_entity",
+                    label: "Home entity",
                     selector: { entity: {} }
                 },
                 {
                     name: "calendar_entity",
+                    label: "Calendar entity",
                     selector: { entity: { domain: "calendar" } }
                 }
             ]
@@ -70,6 +94,7 @@ class PrismSidebarLightCard extends HTMLElement {
     setConfig(config) {
         this.config = { ...config };
         // Default entities if not provided
+        this.temperatureEntity = this.config.temperature_entity || 'sensor.outdoor_temperature';
         this.weatherEntity = this.config.weather_entity || 'weather.example';
         this.gridEntity = this.config.grid_entity || 'sensor.example';
         this.solarEntity = this.config.solar_entity || 'sensor.example';
@@ -97,6 +122,9 @@ class PrismSidebarLightCard extends HTMLElement {
             ? this.config.rotation_interval * 1000 
             : 10000; // Default 10 seconds
         
+        // Get forecast days (default 3)
+        this.forecastDays = this.config.forecast_days || 3;
+        
         // Reset camera index
         this.currentCameraIndex = 0;
         
@@ -122,9 +150,9 @@ class PrismSidebarLightCard extends HTMLElement {
             this.hasRendered = true;
             this.startClock();
             this.startCameraRotation();
+            this.fetchTemperatureHistory();
         } else {
             this.updateValues();
-            this.setupMiniGraph();
         }
     }
 
@@ -285,7 +313,8 @@ class PrismSidebarLightCard extends HTMLElement {
 
         // Update weather forecast
         if (weatherState && weatherState.attributes.forecast) {
-            const forecast = weatherState.attributes.forecast.slice(0, 3);
+            const forecastDays = this.forecastDays || 3;
+            const forecast = weatherState.attributes.forecast.slice(0, forecastDays);
             forecast.forEach((day, i) => {
                 const dayNameEl = this.shadowRoot?.getElementById(`day-name-${i}`);
                 const dayTempEl = this.shadowRoot?.getElementById(`day-temp-${i}`);
@@ -297,10 +326,12 @@ class PrismSidebarLightCard extends HTMLElement {
                     dayNameEl.textContent = date.toLocaleDateString('de-DE', { weekday: 'short' });
                 }
                 if (dayTempEl) {
-                    dayTempEl.textContent = `${day.temperature || '0'}°`;
+                    const temp = day.temperature !== undefined ? day.temperature : (day.templow !== undefined ? day.templow : '0');
+                    dayTempEl.textContent = `${temp}°`;
                 }
                 if (dayLowEl) {
-                    dayLowEl.textContent = `${day.templow || '0'}°`;
+                    const low = day.templow !== undefined ? day.templow : (day.temperature !== undefined ? day.temperature : '0');
+                    dayLowEl.textContent = `${low}°`;
                 }
                 if (dayIconEl && day.condition) {
                     const iconMap = {
@@ -319,15 +350,12 @@ class PrismSidebarLightCard extends HTMLElement {
 
 
     render() {
-        // Get weather data for graph
-        let weatherData = [1.2, 1.5, 2.1, 2.8, 2.5, 1.9, 1.4, 1.0, 0.8]; // Default
-        if (this._hass && this.weatherEntity) {
-            const weatherState = this._hass.states[this.weatherEntity];
-            if (weatherState && weatherState.attributes.forecast) {
-                weatherData = weatherState.attributes.forecast.slice(0, 9).map(f => f.temperature || 0);
-            }
+        // Use temperature history data for graph
+        let graphData = [1.2, 1.5, 2.1, 2.8, 2.5, 1.9, 1.4, 1.0, 0.8]; // Default
+        if (this.temperatureHistory && this.temperatureHistory.length > 0) {
+            graphData = this.temperatureHistory;
         }
-        const graphPath = this.generateGraphPath(weatherData, 280, 60);
+        const graphPath = this.generateGraphPath(graphData, 280, 60);
 
         // Get entity states for preview/display
         const cameraEntity = this.getCurrentCameraEntity();
@@ -353,8 +381,9 @@ class PrismSidebarLightCard extends HTMLElement {
         const solarValue = solarState ? `${solarState.state} ${solarState.attributes.unit_of_measurement || 'kW'}` : '0 kW';
         const homeValue = homeState ? `${homeState.state} ${homeState.attributes.unit_of_measurement || 'kW'}` : '0 kW';
 
-        // Get forecast
-        const forecast = weatherState?.attributes?.forecast?.slice(0, 3) || [];
+        // Get forecast (daily forecast for display)
+        const forecastDays = this.forecastDays || 3;
+        const forecast = weatherState?.attributes?.forecast?.slice(0, forecastDays) || [];
 
         this.shadowRoot.innerHTML = `
         <style>
@@ -592,7 +621,16 @@ class PrismSidebarLightCard extends HTMLElement {
                 </div>
                 
                 <div class="graph-container">
-                    <div id="mini-graph-wrapper" style="width: 100%; height: 100%;"></div>
+                    <svg width="100%" height="100%" viewBox="0 0 280 60" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="grad-sidebar-light-${Date.now()}" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:0.4" />
+                                <stop offset="50%" style="stop-color:#3b82f6;stop-opacity:0.2" />
+                                <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:0" />
+                            </linearGradient>
+                        </defs>
+                        <path d="${graphPath}" fill="url(#grad-sidebar-light-${Date.now()})" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
                 </div>
 
                 <div class="forecast-grid">
@@ -611,8 +649,8 @@ class PrismSidebarLightCard extends HTMLElement {
                             <div class="forecast-item">
                                 <span class="day-name" id="day-name-${i}">${dayName}</span>
                                 <ha-icon icon="${icon}" id="day-icon-${i}" style="color: ${icon === 'mdi:weather-sunny' ? '#f59e0b' : 'rgba(0,0,0,0.6)'}; width: 20px;"></ha-icon>
-                                <span class="day-temp" id="day-temp-${i}">${day.temperature || '0'}°</span>
-                                <span class="day-low" id="day-low-${i}">${day.templow || '0'}°</span>
+                                <span class="day-temp" id="day-temp-${i}">${day.temperature !== undefined ? day.temperature : (day.templow !== undefined ? day.templow : '0')}°</span>
+                                <span class="day-low" id="day-low-${i}">${day.templow !== undefined ? day.templow : (day.temperature !== undefined ? day.temperature : '0')}°</span>
                             </div>
                         `;
                     }).join('') || `
@@ -662,42 +700,6 @@ class PrismSidebarLightCard extends HTMLElement {
 
         // Setup event listeners
         this.setupListeners();
-        
-        // Setup mini-graph-card after render
-        this.setupMiniGraph();
-    }
-    
-    setupMiniGraph() {
-        if (!this._hass || !this.weatherEntity) return;
-        
-        const wrapper = this.shadowRoot?.getElementById('mini-graph-wrapper');
-        if (!wrapper) return;
-        
-        // Create mini-graph-card element
-        const graphCard = document.createElement('hui-mini-graph-card');
-        graphCard.hass = this._hass;
-        graphCard.config = {
-            type: 'custom:mini-graph-card',
-            entities: [this.weatherEntity],
-            hours_to_show: 168,
-            points_per_hour: 1,
-            line_width: 2,
-            height: 64,
-            show: {
-                fill: true,
-                icon: false,
-                name: false,
-                state: false
-            },
-            color_thresholds: [
-                { value: 0, color: '#3b82f6' },
-                { value: 20, color: '#3b82f6' }
-            ]
-        };
-        
-        // Clear and append
-        wrapper.innerHTML = '';
-        wrapper.appendChild(graphCard);
     }
 
     setupListeners() {
@@ -754,6 +756,62 @@ class PrismSidebarLightCard extends HTMLElement {
             detail: { entityId: entityId }
         });
         this.dispatchEvent(event);
+    }
+
+    // Fetch temperature history data from Home Assistant
+    async fetchTemperatureHistory() {
+        if (this.historyLoading || !this._hass || !this.temperatureEntity) return;
+        
+        this.historyLoading = true;
+        
+        try {
+            // Calculate timestamps (last 7 days = 168 hours)
+            const endTime = new Date();
+            const startTime = new Date(endTime.getTime() - (168 * 60 * 60 * 1000)); // 168 hours ago
+            
+            // Format timestamps for Home Assistant API
+            const startISO = startTime.toISOString();
+            const endISO = endTime.toISOString();
+            
+            // Call Home Assistant History API
+            const response = await this._hass.callWS({
+                type: 'history/history_during_period',
+                start_time: startISO,
+                end_time: endISO,
+                entity_ids: [this.temperatureEntity],
+                minimal_response: true,
+                no_attributes: true,
+                significant_changes_only: true
+            });
+            
+            if (response && response.length > 0 && response[0].length > 0) {
+                // Extract temperature values
+                const historyData = response[0];
+                // Sample data points (e.g., one per hour) to avoid too many points
+                const sampleRate = Math.max(1, Math.floor(historyData.length / 168));
+                const sampledData = historyData
+                    .filter((_, index) => index % sampleRate === 0)
+                    .map(entry => parseFloat(entry.s))
+                    .filter(val => !isNaN(val));
+                
+                if (sampledData.length > 0) {
+                    this.temperatureHistory = sampledData;
+                    // Re-render to update the graph
+                    this.render();
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching temperature history:', error);
+            // Fallback: use current temperature state if available
+            if (this._hass.states[this.temperatureEntity]) {
+                const currentTemp = parseFloat(this._hass.states[this.temperatureEntity].state);
+                if (!isNaN(currentTemp)) {
+                    this.temperatureHistory = [currentTemp, currentTemp, currentTemp, currentTemp, currentTemp];
+                }
+            }
+        } finally {
+            this.historyLoading = false;
+        }
     }
 
     // Helper to create smooth SVG path from data points (similar to mini-graph-card)
