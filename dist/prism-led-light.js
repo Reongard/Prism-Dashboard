@@ -34,10 +34,19 @@ class PrismLedLightCard extends HTMLElement {
     }
   
     setConfig(config) {
-      if (!config.entity) {
-        throw new Error('Please define an entity');
-      }
+      // Allow preview mode without entity (for dashboard editor)
       this.config = config;
+      if (!this.config.entity) {
+        // Set a default for preview
+        this.config.entity = "light.example";
+      }
+      // Initialize preview values
+      if (!this._entity) {
+        this.localBrightness = 50;
+        this.localColor = '#ff9500';
+        this.mode = 'color';
+      }
+      this.render();
     }
   
     set hass(hass) {
@@ -83,8 +92,10 @@ class PrismLedLightCard extends HTMLElement {
     }
   
     connectedCallback() {
-      this.render();
-      this.setupListeners();
+      if (this.config) {
+        this.render();
+        this.setupListeners();
+      }
     }
   
     setupListeners() {
