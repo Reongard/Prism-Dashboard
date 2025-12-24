@@ -120,7 +120,7 @@ class PrismHeatSmallLightCard extends HTMLElement {
         
         /* Header */
         .header {
-            display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
         }
         .header-left { display: flex; align-items: center; gap: 12px; }
         
