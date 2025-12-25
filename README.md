@@ -11,7 +11,7 @@
 
 <p align="center">
   <strong>Custom Cards</strong><br>
-  <img src="custom-components/images/prism-dashboard-new.png" alt="Prism Dashboard - Custom Cards" width="85%">
+  <img src="https://raw.githubusercontent.com/BangerTech/Prism-Dashboard/main/custom-components/images/prism-dashboard-new.png" alt="Prism Dashboard - Custom Cards" width="85%">
 </p>
 
 ---

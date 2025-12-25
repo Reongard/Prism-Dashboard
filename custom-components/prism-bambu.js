@@ -1,68 +1,127 @@
+// Bambu Lab Manufacturer and Models for device filtering
+const BAMBU_MANUFACTURER = 'Bambu Lab';
+const BAMBU_PRINTER_MODELS = [
+  'A1', 'A1 MINI', 'A1 Mini', 'A1MINI', 'A1Mini', 'A1mini',
+  'H2C', 'H2D', 'H2DPRO', 'H2S',
+  'P1P', 'P1S', 'P2S',
+  'X1', 'X1C', 'X1E'
+];
+
+// Entity keys to look for (based on translation_key from ha-bambulab)
+const ENTITY_KEYS = [
+  'aux_fan_speed', 'bed_temp', 'chamber_fan_speed', 'chamber_light', 'chamber_temp',
+  'cooling_fan_speed', 'cover_image', 'current_layer', 'door_open', 'humidity',
+  'nozzle_temp', 'power', 'print_progress', 'print_status', 'remaining_time',
+  'speed_profile', 'stage', 'target_bed_temp', 'target_bed_temperature',
+  'target_nozzle_temp', 'target_nozzle_temperature', 'total_layers', 'camera'
+];
+
 class PrismBambuCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
     this.showCamera = false;
     this.hasRendered = false;
+    this._imageLoaded = false;
+    this._validatedImagePath = null;
+    this._deviceEntities = {}; // Cache for device entities
   }
 
   static getStubConfig() {
     return {
-      device_prefix: 'x1c_1',
+      printer: '',
       name: 'Bambu Lab Printer',
-      camera_entity: 'camera.x1c_1',
+      camera_entity: '',
       image: '/local/custom-components/images/prism-bambu-pic.png'
     };
   }
 
   static getConfigForm() {
+    // Build filter for device selector
+    const filterCombinations = BAMBU_PRINTER_MODELS.map(model => ({
+      manufacturer: BAMBU_MANUFACTURER,
+      model: model
+    }));
+
     return {
       schema: [
         {
-          name: 'device_prefix',
-          label: 'Device Prefix (e.g. x1c_1 - NOT the full entity name!)',
+          name: 'printer',
+          label: 'Bambu Lab Printer (select your printer device)',
           required: true,
-          selector: { text: {} }
+          selector: { device: { filter: filterCombinations } }
         },
         {
           name: 'name',
-          label: 'Printer name',
+          label: 'Printer name (optional)',
           selector: { text: {} }
         },
         {
           name: 'camera_entity',
-          label: 'Camera entity (optional)',
+          label: 'Camera entity (optional - auto-detected if not set)',
           selector: { entity: { domain: 'camera' } }
         },
         {
-          name: 'ams_entity',
-          label: 'AMS entity (optional - if AMS data not in main entity)',
-          selector: { entity: {} }
-        },
-        {
-          name: 'temperature_sensor',
-          label: 'Custom temperature sensor (optional)',
-          selector: { entity: { domain: 'sensor' } }
-        },
-        {
-          name: 'humidity_sensor',
-          label: 'Custom humidity sensor (optional)',
-          selector: { entity: { domain: 'sensor' } }
-        },
-        {
           name: 'image',
-          label: 'Printer image path (optional, supports .png and .jpg)',
+          label: 'Printer image path (optional)',
           selector: { text: {} }
         }
       ]
     };
   }
 
+  // Find all entities belonging to this device (like ha-bambulab-cards does)
+  getBambuDeviceEntities() {
+    if (!this._hass || !this.config?.printer) return {};
+    
+    const deviceId = this.config.printer;
+    const result = {};
+    
+    // Loop through all hass entities and find those belonging to our device
+    for (const entityId in this._hass.entities) {
+      const entityInfo = this._hass.entities[entityId];
+      
+      if (entityInfo.device_id === deviceId) {
+        // Check if this entity matches one of our known keys
+        if (entityInfo.platform === 'bambu_lab') {
+          const translationKey = entityInfo.translation_key;
+          if (ENTITY_KEYS.includes(translationKey)) {
+            result[translationKey] = {
+              entity_id: entityId,
+              ...entityInfo
+            };
+          }
+          // Also store by simple name for easier access
+          result[entityId] = entityInfo;
+        }
+      }
+    }
+    
+    return result;
+  }
+
+  // Get entity state by translation key
+  getEntityState(key) {
+    const entityInfo = this._deviceEntities[key];
+    if (!entityInfo?.entity_id) return null;
+    const state = this._hass.states[entityInfo.entity_id];
+    return state?.state ?? null;
+  }
+
+  // Get entity numeric value
+  getEntityValue(key) {
+    const state = this.getEntityState(key);
+    return state ? parseFloat(state) || 0 : 0;
+  }
+
   setConfig(config) {
-    if (!config.device_prefix) {
-      throw new Error('Please define a device_prefix');
+    if (!config.printer) {
+      throw new Error('Please select a Bambu Lab printer device');
     }
     this.config = { ...config };
+    this._imageLoaded = false;
+    this._validatedImagePath = null;
+    this._deviceEntities = {}; // Reset cache
     if (!this.hasRendered) {
       this.render();
       this.hasRendered = true;
@@ -71,13 +130,83 @@ class PrismBambuCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const firstTime = hass && !this._hass;
     this._hass = hass;
+    
+    // Cache device entities on first hass assignment or if empty
+    if (firstTime || Object.keys(this._deviceEntities).length === 0) {
+      this._deviceEntities = this.getBambuDeviceEntities();
+      console.log('Prism Bambu: Found device entities:', Object.keys(this._deviceEntities));
+    }
+    
     if (!this.hasRendered) {
       this.render();
       this.hasRendered = true;
       this.setupListeners();
     } else {
-      this.render();
+      // Only update values, don't re-render entire HTML
+      this.updateValues();
+    }
+  }
+
+  // Update only the values that change, without re-rendering the entire card
+  updateValues() {
+    if (!this.shadowRoot || !this._hass) return;
+    
+    const data = this.getPrinterData();
+    
+    // Update text values
+    const updateText = (selector, value) => {
+      const el = this.shadowRoot.querySelector(selector);
+      if (el && el.textContent !== String(value)) {
+        el.textContent = value;
+      }
+    };
+    
+    // Update progress bar
+    const progressBar = this.shadowRoot.querySelector('.progress-fill');
+    if (progressBar) {
+      progressBar.style.width = `${data.progress}%`;
+    }
+    
+    const progressText = this.shadowRoot.querySelector('.progress-text');
+    if (progressText) {
+      progressText.textContent = `${Math.round(data.progress)}%`;
+    }
+    
+    // Update title
+    updateText('.title', data.name);
+    
+    // Update status
+    updateText('.status-text', data.stateStr);
+    
+    // Update time left
+    const timeValue = this.shadowRoot.querySelector('.stats-row .stat-value');
+    if (timeValue) {
+      timeValue.textContent = data.printTimeLeft;
+    }
+    
+    // Update layer
+    const layerValue = this.shadowRoot.querySelector('.stats-row .stat-value:last-of-type');
+    if (layerValue) {
+      layerValue.textContent = `${data.currentLayer} / ${data.totalLayers}`;
+    }
+    
+    // Update temperatures and fans via pill values
+    const pillValues = this.shadowRoot.querySelectorAll('.pill-value');
+    if (pillValues.length >= 5) {
+      pillValues[0].textContent = `${data.partFanSpeed}%`;
+      pillValues[1].textContent = `${data.auxFanSpeed}%`;
+      pillValues[2].textContent = `${Math.round(data.nozzleTemp)}°`;
+      pillValues[3].textContent = `${Math.round(data.bedTemp)}°`;
+      pillValues[4].textContent = `${Math.round(data.chamberTemp)}°`;
+    }
+    
+    // Update target temps
+    const pillLabels = this.shadowRoot.querySelectorAll('.overlay-right .pill-label');
+    if (pillLabels.length >= 2) {
+      pillLabels[0].textContent = `/${Math.round(data.targetNozzleTemp)}°`;
+      pillLabels[1].textContent = `/${Math.round(data.targetBedTemp)}°`;
     }
   }
 
@@ -121,51 +250,34 @@ class PrismBambuCard extends HTMLElement {
   }
 
   handlePause() {
-    if (!this._hass || !this.config.device_prefix) return;
-    // Open more-info for the print_status sensor
-    const entityId = `sensor.${this.config.device_prefix}_print_status`;
+    if (!this._hass || !this._deviceEntities['print_status']) return;
+    // Open more-info for the print status entity
     const event = new CustomEvent('hass-more-info', {
       bubbles: true,
       composed: true,
-      detail: { entityId }
+      detail: { entityId: this._deviceEntities['print_status'].entity_id }
     });
     this.dispatchEvent(event);
   }
 
   handleStop() {
-    if (!this._hass || !this.config.device_prefix) return;
-    const entityId = `sensor.${this.config.device_prefix}_print_status`;
+    if (!this._hass || !this._deviceEntities['print_status']) return;
     const event = new CustomEvent('hass-more-info', {
       bubbles: true,
       composed: true,
-      detail: { entityId }
+      detail: { entityId: this._deviceEntities['print_status'].entity_id }
     });
     this.dispatchEvent(event);
   }
 
   handleSpeed() {
-    if (!this._hass || !this.config.device_prefix) return;
-    const entityId = `sensor.${this.config.device_prefix}_print_status`;
+    if (!this._hass || !this._deviceEntities['speed_profile']) return;
     const event = new CustomEvent('hass-more-info', {
       bubbles: true,
       composed: true,
-      detail: { entityId }
+      detail: { entityId: this._deviceEntities['speed_profile'].entity_id }
     });
     this.dispatchEvent(event);
-  }
-
-  // Helper to get entity value
-  getEntityValue(entitySuffix) {
-    const entityId = `sensor.${this.config.device_prefix}_${entitySuffix}`;
-    const state = this._hass.states[entityId];
-    return state ? state.state : null;
-  }
-
-  // Helper to get binary sensor value
-  getBinarySensorValue(entitySuffix) {
-    const entityId = `binary_sensor.${this.config.device_prefix}_${entitySuffix}`;
-    const state = this._hass.states[entityId];
-    return state ? state.state === 'on' : false;
   }
 
   getPrinterData() {
@@ -173,74 +285,130 @@ class PrismBambuCard extends HTMLElement {
       return this.getPreviewData();
     }
 
-    const prefix = this.config.device_prefix;
+    // If no device entities found, show preview
+    if (Object.keys(this._deviceEntities).length === 0) {
+      console.warn('Prism Bambu: No device entities found for device:', this.config.printer);
+      return this.getPreviewData();
+    }
     
-    // Read from individual sensor entities (Bambu Lab creates separate entities for each value)
-    const progress = parseFloat(this.getEntityValue('print_progress')) || 0;
-    const printTimeLeft = this.getEntityValue('remaining_time') || '0m';
-    const printEndTime = this.getEntityValue('end_time') || '--:--';
-    const stateStr = this.getEntityValue('print_status') || 'unavailable';
+    // Read values using translation keys (how ha-bambulab organizes entities)
+    const progress = this.getEntityValue('print_progress');
+    const stateStr = this.getEntityState('print_status') || this.getEntityState('stage') || 'unavailable';
     
-    // Temperatures (separate sensors)
-    const nozzleTemp = parseFloat(this.getEntityValue('nozzle_temperature')) || 0;
-    const targetNozzleTemp = parseFloat(this.getEntityValue('target_nozzle_temperature')) || 0;
-    const bedTemp = parseFloat(this.getEntityValue('bed_temperature')) || 0;
-    const targetBedTemp = parseFloat(this.getEntityValue('target_bed_temperature')) || 0;
-    const chamberTemp = parseFloat(this.getEntityValue('chamber_temperature')) || 0;
+    // Get remaining time - format it nicely
+    const remainingTimeEntity = this._deviceEntities['remaining_time'];
+    let printTimeLeft = '0m';
+    if (remainingTimeEntity?.entity_id) {
+      const state = this._hass.states[remainingTimeEntity.entity_id];
+      if (state) {
+        const minutes = parseFloat(state.state) || 0;
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.round(minutes % 60);
+        if (hours > 0) {
+          printTimeLeft = `${hours}h ${mins}m`;
+        } else {
+          printTimeLeft = `${mins}m`;
+        }
+      }
+    }
     
-    // Fans (separate sensors)
-    const partFanSpeed = parseFloat(this.getEntityValue('cooling_fan_speed')) || 0;
-    const auxFanSpeed = parseFloat(this.getEntityValue('aux_fan_speed')) || 0;
+    // Temperatures
+    const nozzleTemp = this.getEntityValue('nozzle_temp');
+    const targetNozzleTemp = this.getEntityValue('target_nozzle_temp') || this.getEntityValue('target_nozzle_temperature');
+    const bedTemp = this.getEntityValue('bed_temp');
+    const targetBedTemp = this.getEntityValue('target_bed_temp') || this.getEntityValue('target_bed_temperature');
+    const chamberTemp = this.getEntityValue('chamber_temp');
     
-    // Layer info (separate sensors)
-    const currentLayer = parseInt(this.getEntityValue('current_layer')) || 0;
-    const totalLayers = parseInt(this.getEntityValue('total_layers')) || 0;
+    // Fans
+    const partFanSpeed = this.getEntityValue('cooling_fan_speed');
+    const auxFanSpeed = this.getEntityValue('aux_fan_speed');
     
-    const name = this.config.name || `${prefix.toUpperCase()} Printer`;
+    // Layer info
+    const currentLayer = parseInt(this.getEntityState('current_layer')) || 0;
+    const totalLayers = parseInt(this.getEntityState('total_layers')) || 0;
     
-    // Camera
-    const cameraEntity = this.config.camera_entity;
+    // Get printer name from device
+    const deviceId = this.config.printer;
+    const device = this._hass.devices?.[deviceId];
+    const name = this.config.name || device?.name || 'Bambu Lab Printer';
+    
+    // Camera - auto-detect from device entities or use config
+    let cameraEntity = this.config.camera_entity;
+    if (!cameraEntity && this._deviceEntities['camera']) {
+      cameraEntity = this._deviceEntities['camera'].entity_id;
+    }
     const cameraState = cameraEntity ? this._hass.states[cameraEntity] : null;
     const cameraImage = cameraState?.attributes?.entity_picture || null;
     
-    // Image path - support both .png and .jpg (cache to prevent flickering)
-    if (!this._imagePath) {
-      let printerImg = this.config.image;
-      if (!printerImg) {
-        printerImg = '/local/custom-components/images/prism-bambu-pic.png';
-      }
-      this._imagePath = printerImg;
+    // Image path - cache validated path to prevent flickering
+    if (!this._validatedImagePath) {
+      this._validatedImagePath = this.config.image || '/local/custom-components/images/prism-bambu-pic.png';
     }
 
-    // AMS Data - Read from AMS sensor entities
-    // Bambu Lab creates entities like: sensor.x1c_1_ams_1_tray_1, sensor.x1c_1_ams_1_tray_2, etc.
+    // AMS Data - Find AMS devices connected to this printer via device relationships
     let amsData = [];
+    let foundAnyAms = false;
     
-    // Try to find AMS tray entities (usually tray 1-4 in AMS 1)
-    for (let trayId = 1; trayId <= 4; trayId++) {
-      const trayEntity = `sensor.${prefix}_ams_1_tray_${trayId}`;
-      const trayState = this._hass.states[trayEntity];
+    // Find AMS/tray entities by looking at devices connected via this printer
+    const printerDeviceId = this.config.printer;
+    const connectedDevices = Object.values(this._hass.devices || {})
+      .filter(d => d.via_device_id === printerDeviceId);
+    
+    // Look for AMS tray entities in connected devices
+    const trayEntities = [];
+    for (const connectedDevice of connectedDevices) {
+      for (const entityId in this._hass.entities) {
+        const entityInfo = this._hass.entities[entityId];
+        if (entityInfo.device_id === connectedDevice.id) {
+          // Check if this is a tray entity
+          if (entityInfo.translation_key && entityInfo.translation_key.includes('tray')) {
+            trayEntities.push({
+              entityId,
+              translationKey: entityInfo.translation_key,
+              ...entityInfo
+            });
+          }
+        }
+      }
+    }
+    
+    // Sort tray entities by their tray number
+    trayEntities.sort((a, b) => {
+      const numA = parseInt(a.translationKey.match(/\d+/)?.[0] || '0');
+      const numB = parseInt(b.translationKey.match(/\d+/)?.[0] || '0');
+      return numA - numB;
+    });
+    
+    // Build AMS data from found tray entities
+    for (let i = 0; i < Math.max(4, trayEntities.length); i++) {
+      const trayEntity = trayEntities[i];
       
-      if (trayState && trayState.attributes) {
-        const attr = trayState.attributes;
-        const type = attr.filament_type || attr.type || trayState.state || '';
-        const color = attr.color || attr.filament_color || '#666666';
-        const remaining = parseFloat(attr.remaining || attr.remaining_filament || 0);
-        const active = trayState.state === 'active' || attr.active || false;
-        const empty = !type || type === 'empty' || type === 'unavailable';
+      if (trayEntity) {
+        foundAnyAms = true;
+        const trayState = this._hass.states[trayEntity.entityId];
+        const attr = trayState?.attributes || {};
+        
+        const type = attr.type || trayState?.state || '';
+        let color = attr.color || '#666666';
+        if (color && !color.startsWith('#') && !color.startsWith('rgb')) {
+          color = '#' + color;
+        }
+        const remaining = parseFloat(attr.remain || attr.remaining || 100);
+        const active = attr.active || false;
+        const empty = !type || type === 'empty' || type === 'unavailable' || type === 'unknown';
         
         amsData.push({
-          id: trayId,
+          id: i + 1,
           type: empty ? '' : type,
           color: empty ? '#666666' : color,
           remaining: empty ? 0 : remaining,
           active,
           empty
         });
-      } else {
-        // Tray entity not found, add empty slot
+      } else if (i < 4) {
+        // Fill empty slots up to 4
         amsData.push({
-          id: trayId,
+          id: i + 1,
           type: '',
           color: '#666666',
           remaining: 0,
@@ -250,8 +418,8 @@ class PrismBambuCard extends HTMLElement {
       }
     }
     
-    // If all AMS slots are empty, use preview data
-    if (amsData.every(slot => slot.empty)) {
+    // If no AMS data found at all, show preview data
+    if (!foundAnyAms) {
       amsData = [
         { id: 1, type: 'PLA', color: '#FF4444', remaining: 85, active: false },
         { id: 2, type: 'PETG', color: '#4488FF', remaining: 42, active: true },
@@ -277,7 +445,7 @@ class PrismBambuCard extends HTMLElement {
       name,
       cameraEntity,
       cameraImage,
-      printerImg: this._imagePath,
+      printerImg: this._validatedImagePath,
       amsData
     };
   }
@@ -549,6 +717,18 @@ class PrismBambuCard extends HTMLElement {
             padding: 16px;
             box-sizing: border-box;
         }
+        .printer-fallback-icon {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,0.2);
+        }
+        .printer-fallback-icon ha-icon {
+            width: 80px;
+            height: 80px;
+        }
         .camera-feed {
             width: 100%;
             height: 100%;
@@ -795,27 +975,9 @@ class PrismBambuCard extends HTMLElement {
                     <ha-icon icon="mdi:video"></ha-icon>
                 </div>
                 ` : ''}
-                <img 
-                    src="${data.printerImg}" 
-                    class="printer-img" 
-                    onload="this.dataset.loaded='true';"
-                    onerror="
-                        if(!this.dataset.errorHandled){
-                            this.dataset.errorHandled='true'; 
-                            const ext = this.src.split('.').pop();
-                            if(ext === 'png'){
-                                this.src=this.src.replace('.png','.jpg');
-                            } else if(ext === 'jpg'){
-                                this.src=this.src.replace('.jpg','.png');
-                            } else {
-                                this.style.display='none';
-                                this.nextElementSibling.style.display='flex';
-                            }
-                        }
-                    " 
-                />
-                <div style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); font-size: 14px;">
-                  <ha-icon icon="mdi:printer-3d" style="width: 64px; height: 64px;"></ha-icon>
+                <img src="${data.printerImg}" class="printer-img" />
+                <div class="printer-fallback-icon" style="display: none;">
+                  <ha-icon icon="mdi:printer-3d"></ha-icon>
                 </div>
                 
                 <div class="overlay-left">
