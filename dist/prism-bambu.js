@@ -241,36 +241,43 @@ class PrismBambuCard extends HTMLElement {
   }
 
   setupListeners() {
+    // Use onclick to avoid duplicate event listeners when re-rendering
     const viewToggle = this.shadowRoot?.querySelector('.view-toggle');
     if (viewToggle) {
-      viewToggle.addEventListener('click', () => this.toggleView());
+      viewToggle.onclick = () => this.toggleView();
     }
 
     const pauseBtn = this.shadowRoot?.querySelector('.btn-pause');
     if (pauseBtn) {
-      pauseBtn.addEventListener('click', () => this.handlePause());
+      pauseBtn.onclick = () => this.handlePause();
     }
 
     const stopBtn = this.shadowRoot?.querySelector('.btn-stop');
     if (stopBtn) {
-      stopBtn.addEventListener('click', () => this.handleStop());
+      stopBtn.onclick = () => this.handleStop();
     }
 
     const speedBtn = this.shadowRoot?.querySelector('.btn-speed');
     if (speedBtn) {
-      speedBtn.addEventListener('click', () => this.handleSpeed());
+      speedBtn.onclick = () => this.handleSpeed();
     }
     
-    // Header light button
+    // Header light button - toggle chamber light
     const lightBtn = this.shadowRoot?.querySelector('.btn-light');
     if (lightBtn) {
-      lightBtn.addEventListener('click', () => this.handleLightToggle());
+      lightBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.handleLightToggle();
+      };
     }
     
-    // Header camera button
+    // Header camera button - toggle camera view (separate from light!)
     const cameraBtn = this.shadowRoot?.querySelector('.btn-camera');
     if (cameraBtn) {
-      cameraBtn.addEventListener('click', () => this.toggleView());
+      cameraBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.toggleView();
+      };
     }
   }
 
@@ -547,8 +554,12 @@ class PrismBambuCard extends HTMLElement {
           }
         }
         
-        // Get remaining percentage - try multiple attribute names
-        const remaining = parseFloat(attr.remain ?? attr.remaining ?? attr.k ?? 100);
+        // Get remaining percentage
+        // remain_enabled indicates if RFID tracking is active
+        const remainEnabled = attr.remain_enabled === true;
+        const remainValue = parseFloat(attr.remain ?? attr.remaining ?? 0);
+        // If remain_enabled is false or not set, show "?" instead of potentially wrong 0%
+        const remaining = remainEnabled ? remainValue : (remainValue > 0 ? remainValue : -1); // -1 = unknown
         
         // Check if active
         const active = attr.active === true || attr.in_use === true;
@@ -565,6 +576,7 @@ class PrismBambuCard extends HTMLElement {
           type: isEmpty ? '' : type,
           color: isEmpty ? '#666666' : color,
           remaining: isEmpty ? 0 : Math.round(remaining),
+          remainEnabled: remainEnabled,
           active,
           empty: isEmpty
         });
@@ -1185,7 +1197,7 @@ class PrismBambuCard extends HTMLElement {
                     <div class="spool-visual">
                         ${!slot.empty ? `
                             <div class="filament" style="background-color: ${slot.color}"></div>
-                            <div class="remaining-badge">${slot.remaining}%</div>
+                            <div class="remaining-badge">${slot.remaining < 0 ? '?' : slot.remaining + '%'}</div>
                         ` : ''}
                         <div class="spool-center"></div>
                     </div>
