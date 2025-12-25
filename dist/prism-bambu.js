@@ -500,20 +500,38 @@ class PrismBambuCard extends HTMLElement {
         const trayState = this._hass.states[trayEntity.entityId];
         const attr = trayState?.attributes || {};
         
-        // Debug first slot attributes
+        // Debug slot attributes
         if (i === 0) {
           console.log('Prism Bambu: Slot 1 attributes:', JSON.stringify(attr));
         }
+        console.log(`Prism Bambu: Slot ${i + 1} - name: "${attr.name}", type: "${attr.type}", state: "${trayState?.state}"`);
         
-        // Get filament type - from state (e.g. "Bambu TPU for AMS") or attributes
-        let type = trayState?.state || attr.name || attr.type || '';
-        // Extract short type name (e.g. "Bambu TPU for AMS" -> "TPU", "PLA Basic" -> "PLA")
-        const typeMatch = type.match(/\b(PLA|PETG|ABS|TPU|ASA|PA|PC|PVA|HIPS|PP)\b/i);
+        // ha-bambulab-cards uses attr.name for display (e.g. "Bambu PCTG Basic", "Bambu TPU for AMS")
+        // We need to extract the filament type from name first, then type, then state
+        const nameStr = attr.name || '';
+        const typeStr = attr.type || '';
+        const stateStr = trayState?.state || '';
+        
+        // Combine all sources to search for known filament types
+        const searchStr = `${nameStr} ${typeStr} ${stateStr}`;
+        
+        // Extract short type name - support common filament types
+        // Order matters: check specific types before generic ones
+        const typeMatch = searchStr.match(/\b(PCTG|PETG|PLA|ABS|TPU|ASA|PA-CF|PA|PC|PVA|HIPS|PP|SUPPORT)\b/i);
+        let type = '';
         if (typeMatch) {
           type = typeMatch[1].toUpperCase();
-        } else if (type.length > 10) {
+        } else if (typeStr && typeStr !== 'Generic' && typeStr.length <= 8) {
+          // Use type if it's short and not "Generic"
+          type = typeStr.toUpperCase();
+        } else if (nameStr && nameStr !== 'Generic' && nameStr.length <= 8) {
+          // Use name if short
+          type = nameStr.toUpperCase();
+        } else if (nameStr) {
           // Shorten long names
-          type = type.substring(0, 8);
+          type = nameStr.substring(0, 6).toUpperCase();
+        } else {
+          type = typeStr || stateStr || '';
         }
         
         // Get color - may be 8 chars with alpha (#RRGGBBAA), convert to 6 (#RRGGBB)
@@ -768,8 +786,9 @@ class PrismBambuCard extends HTMLElement {
         }
         .header-icon-btn.active {
             color: #fbbf24;
-            background-color: rgba(251, 191, 36, 0.1);
-            border-color: rgba(251, 191, 36, 0.3);
+            background-color: rgba(20, 20, 20, 0.9);
+            border-color: rgba(0, 0, 0, 0.3);
+            box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8), inset -1px -1px 2px rgba(255,255,255,0.05);
         }
         .header-icon-btn ha-icon {
             width: 18px;
@@ -918,6 +937,10 @@ class PrismBambuCard extends HTMLElement {
             z-index: 10;
             padding: 16px;
             box-sizing: border-box;
+            transition: filter 0.3s ease;
+        }
+        .printer-img.dimmed {
+            filter: drop-shadow(0 0 10px rgba(0,0,0,0.3)) brightness(0.4);
         }
         .printer-fallback-icon {
             width: 100%;
@@ -1149,7 +1172,7 @@ class PrismBambuCard extends HTMLElement {
                 </button>
                 ` : ''}
                 ${data.cameraEntity ? `
-                <button class="header-icon-btn btn-camera" title="Toggle Camera">
+                <button class="header-icon-btn btn-camera ${this.showCamera ? 'active' : ''}" title="Toggle Camera">
                     <ha-icon icon="mdi:camera${this.showCamera ? '' : '-outline'}"></ha-icon>
                 </button>
                 ` : ''}
@@ -1173,11 +1196,8 @@ class PrismBambuCard extends HTMLElement {
             `).join('')}
         </div>
 
-        <div class="main-visual">
+        <div class="main-visual ${!data.isLightOn ? 'light-off' : ''}">
             ${data.cameraEntity && this.showCamera ? `
-                <div class="view-toggle">
-                    <ha-icon icon="mdi:image"></ha-icon>
-                </div>
                 ${data.cameraImage ? `
                     <img src="${data.cameraImage}" class="camera-feed" />
                 ` : `
@@ -1188,12 +1208,7 @@ class PrismBambuCard extends HTMLElement {
                     ></ha-camera-stream>
                 `}
             ` : `
-                ${data.cameraEntity ? `
-                <div class="view-toggle">
-                    <ha-icon icon="mdi:video"></ha-icon>
-                </div>
-                ` : ''}
-                <img src="${data.printerImg}" class="printer-img" />
+                <img src="${data.printerImg}" class="printer-img ${!data.isLightOn ? 'dimmed' : ''}" />
                 <div class="printer-fallback-icon" style="display: none;">
                   <ha-icon icon="mdi:printer-3d"></ha-icon>
                 </div>
