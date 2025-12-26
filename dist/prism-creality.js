@@ -138,14 +138,16 @@ class PrismCrealityCard extends HTMLElement {
   }
 
   // Get entity by name pattern (searches entity_id)
+  // First tries device-bound entities, then falls back to platform-based search
   findEntityByPattern(pattern, domain = null) {
     if (!this._hass) return null;
     
     const deviceId = this.config?.printer;
+    
+    // First pass: Look for entities bound to our device
     for (const entityId in this._hass.entities) {
       const entityInfo = this._hass.entities[entityId];
       if (entityInfo.device_id === deviceId && entityId.toLowerCase().includes(pattern.toLowerCase())) {
-        // If domain filter is specified, check it
         if (domain) {
           const entityDomain = entityId.split('.')[0];
           if (entityDomain === domain) {
@@ -156,6 +158,37 @@ class PrismCrealityCard extends HTMLElement {
         }
       }
     }
+    
+    // Second pass: Look for creality_control platform entities (they may not be bound to device)
+    for (const entityId in this._hass.entities) {
+      const entityInfo = this._hass.entities[entityId];
+      // Check if it's from creality_control platform and matches pattern
+      if (entityInfo.platform === 'creality_control' && entityId.toLowerCase().includes(pattern.toLowerCase())) {
+        if (domain) {
+          const entityDomain = entityId.split('.')[0];
+          if (entityDomain === domain) {
+            return entityId;
+          }
+        } else {
+          return entityId;
+        }
+      }
+    }
+    
+    // Third pass: Look for any entity with "creality" in name and matching pattern
+    for (const entityId in this._hass.entities) {
+      if (entityId.toLowerCase().includes('creality') && entityId.toLowerCase().includes(pattern.toLowerCase())) {
+        if (domain) {
+          const entityDomain = entityId.split('.')[0];
+          if (entityDomain === domain) {
+            return entityId;
+          }
+        } else {
+          return entityId;
+        }
+      }
+    }
+    
     return null;
   }
 
@@ -701,8 +734,9 @@ class PrismCrealityCard extends HTMLElement {
     const powerSwitchState = powerSwitch ? this._hass.states[powerSwitch] : null;
     const isPowerOn = powerSwitchState?.state === 'on';
     
-    // Debug: Log light entity
-    console.log('Prism Creality: Light entity:', lightEntityId, 'State:', lightState);
+    // Debug: Log light entity details
+    console.log('Prism Creality: Light - configured:', this.config.light_switch, 'auto-switch:', lightSwitchEntity, 'auto-sensor:', lightSensorEntity);
+    console.log('Prism Creality: Light entity used:', lightEntityId, 'State:', lightState, 'isLightOn:', isLightOn);
     
     // Get printer name from device
     const deviceId = this.config.printer;
