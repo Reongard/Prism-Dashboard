@@ -32,6 +32,9 @@ const ENTITY_KEYS = [
 ];
 
 class PrismBambuCard extends HTMLElement {
+  // Set to true for debugging output (should be false in production)
+  static DEBUG = false;
+  
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -39,6 +42,14 @@ class PrismBambuCard extends HTMLElement {
     this.hasRendered = false;
     this._deviceEntities = {}; // Cache for device entities
     this._lastStatus = null; // Track status for re-render decisions
+    this._updateThrottleTimer = null; // Throttle updates to prevent excessive re-renders
+  }
+  
+  // Debug logging helper - only logs if DEBUG is enabled
+  static log(...args) {
+    if (PrismBambuCard.DEBUG) {
+      console.log('Prism Bambu:', ...args);
+    }
   }
 
   static getStubConfig() {
@@ -188,9 +199,29 @@ class PrismBambuCard extends HTMLElement {
     // Cache device entities on first hass assignment or if empty (only if printer is configured)
     if (this.config?.printer && (firstTime || Object.keys(this._deviceEntities).length === 0)) {
       this._deviceEntities = this.getBambuDeviceEntities();
-      console.log('Prism Bambu: Found device entities:', Object.keys(this._deviceEntities));
+      PrismBambuCard.log('Found device entities:', Object.keys(this._deviceEntities));
     }
     
+    // Throttle updates to prevent excessive re-renders (max once per 100ms)
+    // This prevents OOM issues when many state changes happen rapidly
+    if (this._updateThrottleTimer) {
+      return;
+    }
+    
+    this._updateThrottleTimer = setTimeout(() => {
+      this._updateThrottleTimer = null;
+      this._performUpdate(firstTime, oldStatus);
+    }, 100);
+    
+    // For first render, do it immediately
+    if (!this.hasRendered || firstTime) {
+      clearTimeout(this._updateThrottleTimer);
+      this._updateThrottleTimer = null;
+      this._performUpdate(firstTime, oldStatus);
+    }
+  }
+  
+  _performUpdate(firstTime, oldStatus) {
     // Get current status to detect changes
     const data = this.getPrinterData();
     const newStatus = `${data.isIdle}-${data.isPrinting}-${data.isPaused}-${!!data.chamberLightEntity}-${!!data.cameraEntity}-${!!data.powerSwitch}-${data.isPowerOn}`;
@@ -200,7 +231,7 @@ class PrismBambuCard extends HTMLElement {
       this._lastStatus = newStatus;
       this.render();
       this.hasRendered = true;
-      this.setupListeners();
+      // Note: setupListeners() is already called by render(), no need to call it again
     } else {
       // Only update dynamic values
       this.updateValues();
@@ -339,7 +370,12 @@ class PrismBambuCard extends HTMLElement {
   }
 
   disconnectedCallback() {
-    // Cleanup if needed
+    // Cleanup timers to prevent memory leaks
+    if (this._updateThrottleTimer) {
+      clearTimeout(this._updateThrottleTimer);
+      this._updateThrottleTimer = null;
+    }
+    this._powerToggleDebounce = false;
   }
 
   setupListeners() {
@@ -420,14 +456,31 @@ class PrismBambuCard extends HTMLElement {
   
   handlePowerToggle() {
     if (!this._hass || !this.config.power_switch) return;
+    
+    // Debounce: Prevent multiple rapid clicks (wait 1 second between toggles)
+    if (this._powerToggleDebounce) {
+      PrismBambuCard.log('Power toggle debounced - too fast');
+      return;
+    }
+    this._powerToggleDebounce = true;
+    setTimeout(() => { this._powerToggleDebounce = false; }, 1000);
+    
     const entityId = this.config.power_switch;
+    
+    // Verify the entity exists before calling service
+    const entityState = this._hass.states[entityId];
+    if (!entityState) {
+      console.warn('Prism Bambu: Power switch entity not found:', entityId);
+      return;
+    }
     
     // Call the service
     this._hass.callService('switch', 'toggle', { entity_id: entityId });
+    PrismBambuCard.log('Power toggle called for:', entityId);
     
     // Optimistically update UI immediately (don't wait for HA state update)
     const powerBtn = this.shadowRoot?.querySelector('.btn-power');
-    const currentState = this._hass.states[entityId]?.state;
+    const currentState = entityState.state;
     const newState = currentState === 'on' ? 'off' : 'on';
     
     if (powerBtn) {
@@ -561,7 +614,7 @@ class PrismBambuCard extends HTMLElement {
     const stateStr = this.getEntityState('print_status') || this.getEntityState('stage') || 'unavailable';
     
     // Debug: Log the current status
-    console.log('Prism Bambu: Current status:', stateStr, 'Progress:', progress);
+    PrismBambuCard.log('Current status:', stateStr, 'Progress:', progress);
     
     // Determine if printer is actively printing (support German status names too)
     const statusLower = stateStr.toLowerCase();
@@ -631,7 +684,7 @@ class PrismBambuCard extends HTMLElement {
     const isPowerOn = powerSwitchState?.state === 'on';
     
     // Debug: Log light entity
-    console.log('Prism Bambu: Chamber light entity:', chamberLightEntityId, 'State:', chamberLightState);
+    PrismBambuCard.log('Chamber light entity:', chamberLightEntityId, 'State:', chamberLightState);
     
     // Get printer name from device
     const deviceId = this.config.printer;
@@ -666,7 +719,7 @@ class PrismBambuCard extends HTMLElement {
     const cameraImage = cameraState?.attributes?.entity_picture || null;
     
     // Debug: Log camera entity
-    console.log('Prism Bambu: Camera entity:', cameraEntity, 'Has image:', !!cameraImage);
+    PrismBambuCard.log('Camera entity:', cameraEntity, 'Has image:', !!cameraImage);
     
     // Cover image (Titelbild / 3D model preview) - auto-detect or use config
     let coverImageEntity = this.config.cover_image_entity;
@@ -707,7 +760,7 @@ class PrismBambuCard extends HTMLElement {
     }
     
     // Debug: Log cover image entity
-    console.log('Prism Bambu: Cover image entity:', coverImageEntity, 'URL:', coverImageUrl);
+    PrismBambuCard.log('Cover image entity:', coverImageEntity, 'URL:', coverImageUrl);
     
     // Image path - use configured image or default
     // Supports both .png and .jpg formats
@@ -743,7 +796,7 @@ class PrismBambuCard extends HTMLElement {
       isExternalSpool = amsModel.toLowerCase().includes('external spool') || 
                         amsName.toLowerCase().includes('externalspool');
       
-      console.log('Prism Bambu: AMS device:', amsName, 'model:', amsModel, 'isExternalSpool:', isExternalSpool);
+      PrismBambuCard.log('AMS device:', amsName, 'model:', amsModel, 'isExternalSpool:', isExternalSpool);
       
       if (isExternalSpool) {
         // External Spool: The device itself contains filament info
@@ -764,7 +817,7 @@ class PrismBambuCard extends HTMLElement {
                   translationKey: entityInfo.translation_key || 'external_spool',
                   ...entityInfo
                 });
-                console.log('Prism Bambu: Found External Spool entity:', entityId);
+                PrismBambuCard.log('Found External Spool entity:', entityId);
                 break; // External spool has only one sensor per device
               }
             }
@@ -799,11 +852,11 @@ class PrismBambuCard extends HTMLElement {
     
     // Debug: Log found entities
     if (trayEntities.length > 0) {
-      console.log('Prism Bambu: Found tray/spool entities:', trayEntities.map(e => e.entityId));
+      PrismBambuCard.log('Found tray/spool entities:', trayEntities.map(e => e.entityId));
       const firstState = this._hass.states[trayEntities[0].entityId];
-      console.log('Prism Bambu: First entity full state:', firstState);
+      PrismBambuCard.log('First entity full state:', firstState);
     } else if (this.config.ams_device) {
-      console.log('Prism Bambu: No tray entities found for AMS device');
+      PrismBambuCard.log('No tray entities found for AMS device');
     }
     
     // Build AMS data from found tray entities
@@ -821,9 +874,9 @@ class PrismBambuCard extends HTMLElement {
         
         // Debug slot attributes
         if (i === 0) {
-          console.log('Prism Bambu: Slot 1 attributes:', JSON.stringify(attr));
+          PrismBambuCard.log('Slot 1 attributes:', JSON.stringify(attr));
         }
-        console.log(`Prism Bambu: Slot ${i + 1} - name: "${attr.name}", type: "${attr.type}", state: "${trayState?.state}"`);
+        PrismBambuCard.log(`Slot ${i + 1} - name: "${attr.name}", type: "${attr.type}", state: "${trayState?.state}"`);
         
         // ha-bambulab-cards uses attr.name for display (e.g. "Bambu PCTG Basic", "Bambu TPU for AMS")
         // We need to extract the filament type from name first, then type, then state
@@ -906,11 +959,11 @@ class PrismBambuCard extends HTMLElement {
     }
     
     // Debug: Log final AMS data
-    console.log('Prism Bambu: Final AMS data:', amsData, 'isExternalSpool:', isExternalSpool, 'ams_device configured:', !!this.config.ams_device);
+    PrismBambuCard.log('Final AMS data:', amsData, 'isExternalSpool:', isExternalSpool, 'ams_device configured:', !!this.config.ams_device);
     
     // If no AMS device configured OR no entities found, hide section
     if (!this.config.ams_device || amsData.length === 0) {
-      console.log('Prism Bambu: No AMS configured or no data, hiding AMS section');
+      PrismBambuCard.log('No AMS configured or no data, hiding AMS section');
       amsData = []; // Empty = hide section
     }
 
@@ -950,8 +1003,8 @@ class PrismBambuCard extends HTMLElement {
     };
     
     // Debug: Log key data for icons and status
-    console.log('Prism Bambu: Icons - Light:', chamberLightEntityId, 'Camera:', cameraEntity);
-    console.log('Prism Bambu: Status - isPrinting:', isPrinting, 'isPaused:', isPaused, 'isIdle:', isIdle);
+    PrismBambuCard.log('Icons - Light:', chamberLightEntityId, 'Camera:', cameraEntity);
+    PrismBambuCard.log('Status - isPrinting:', isPrinting, 'isPaused:', isPaused, 'isIdle:', isIdle);
     
     return returnData;
   }
